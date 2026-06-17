@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
 
-from backend.apps.projects.models import Project
+from ..projects.models import Project
 
 
 # Create your models here.
@@ -56,8 +56,17 @@ class TaskVersion(models.Model):
     ops_code = models.CharField(max_length=80, blank=True, null=True)
     project_code = models.CharField(max_length=80, blank=True, null=True)
 
-    old_code = models.TextField(blank=True, null=True)
-    new_code = models.TextField(blank=True, null=True)
+    old_code = models.FileField(
+        upload_to='task_versions/old_code/',
+        blank=True,
+        null=True
+    )
+
+    new_code = models.FileField(
+        upload_to='task_versions/new_code/',
+        blank=True,
+        null=True
+    )
 
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='tasks_versions')
 
