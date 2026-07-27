@@ -1,5 +1,4 @@
 from django.db.models import Count
-from django.shortcuts import render
 from rest_framework import viewsets
 
 from apps.projects.models import Project
@@ -14,5 +13,5 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Project.objects.annotate(
-            task_count=Count('task')
+            task_count=Count('tasks')
         )
