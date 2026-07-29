@@ -4,8 +4,15 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.tasks.serializers import TaskSerializer, TaskFinishSerializer, TaskVersionSerializer
-from .models import Task, TaskVersion
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from .models import Task, TaskVersion, TaskAttachment
+from .serializers import (
+    TaskSerializer,
+    TaskDetailSerializer,
+    TaskVersionSerializer,
+    TaskFinishSerializer,
+    TaskAttachmentSerializer,
+)
 
 # Create your views here.
 
@@ -13,11 +20,21 @@ class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = TaskSerializer
 
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return TaskDetailSerializer
+
+        return TaskSerializer
+
     def get_queryset(self):
         queryset = Task.objects.select_related(
             'project',
             'created_by',
-            'assigned_to',
+            'assigned_to'
+        ).prefetch_related(
+            'comments',
+            'attachments',
+            'versions'
         )
 
         status_param = self.request.query_params.get('status')
@@ -90,3 +107,54 @@ class TaskViewSet(viewsets.ModelViewSet):
             data[task.status].append(serialized)
 
         return Response(data)
+
+    @action(detail=True, methods=['patch'])
+    def change_status(self, request, pk=None):
+        task = self.get_object()
+        new_status = request.data.get('status')
+
+        valid_statuses = [choice[0] for choice in Task.Status.choices]
+
+        if new_status not in valid_statuses:
+            return Response(
+                {'detail': 'Status inválido.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        task.status = new_status
+
+        if new_status == Task.Status.DEVELOPMENT and not task.started_at:
+            task.started_at = timezone.now()
+
+        if new_status == Task.Status.FINISHED:
+            task.finished_at = timezone.now()
+
+        task.save()
+
+        serializer = TaskSerializer(task)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def upload_attachment(self, request, pk=None):
+        task = self.get_object()
+        uploaded_file = request.FILES.get('file')
+
+        if not uploaded_file:
+            return Response(
+                {'detail': 'Nenhum arquivo enviado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        attachment = TaskAttachment.objects.create(
+            task=task,
+            file=uploaded_file,
+            original_name=uploaded_file.name,
+            uploaded_by=request.user,
+        )
+
+        serializer = TaskAttachmentSerializer(
+            attachment,
+            context={'request': request}
+        )
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

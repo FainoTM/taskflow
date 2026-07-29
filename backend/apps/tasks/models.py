@@ -74,3 +74,22 @@ class TaskVersion(models.Model):
 
     class Meta:
         ordering = ('-created_at',)
+
+class TaskAttachment(models.Model):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='attachments')
+
+    file = models.FileField(
+        upload_to='task_attachments/',
+        blank=True,
+    )
+
+    original_name = models.CharField(max_length=255)
+
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='task_attachments')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return self.original_name
