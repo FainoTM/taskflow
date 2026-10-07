@@ -3,7 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
+from django.db.models import Q
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .models import Task, TaskVersion, TaskAttachment
 from .serializers import (
@@ -13,6 +13,7 @@ from .serializers import (
     TaskFinishSerializer,
     TaskAttachmentSerializer,
 )
+
 
 # Create your views here.
 
@@ -37,18 +38,26 @@ class TaskViewSet(viewsets.ModelViewSet):
             'versions'
         )
 
+        user = self.request.user
+
+        if not user.is_staff:
+            queryset = queryset.filter(
+                Q(assignment_type=Task.AssignmentType.ALL)
+                |
+                Q(
+                    assignment_type=Task.AssignmentType.USER,
+                    assigned_to=user
+                )
+            )
+
         status_param = self.request.query_params.get('status')
         project_param = self.request.query_params.get('project')
-        assigned_to_param = self.request.query_params.get('assigned_to')
 
         if status_param:
             queryset = queryset.filter(status=status_param)
 
         if project_param:
             queryset = queryset.filter(project_id=project_param)
-
-        if assigned_to_param:
-            queryset = queryset.filter(assigned_to_id=assigned_to_param)
 
         return queryset
 
@@ -90,7 +99,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
-    def kanban(self,request):
+    def kanban(self, request):
         tasks = self.get_queryset()
 
         data = {
