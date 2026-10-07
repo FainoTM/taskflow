@@ -19,6 +19,10 @@ export type TaskType =
   | 'DATABASE'
   | 'OTHER';
 
+export type AssignmentType =
+  | 'ALL'
+  | 'USER';
+
 export interface TaskComment {
   id: number;
   task: number;
@@ -66,6 +70,7 @@ export interface Task {
   created_by_name: string;
   assigned_to: number | null;
   assigned_to_name: string | null;
+  assignment_type: AssignmentType;
   started_at: string | null;
   finished_at: string | null;
   created_at: string;

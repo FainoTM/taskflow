@@ -26,7 +26,7 @@ class TaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source='project.name', read_only=True)
     project_code = serializers.CharField(source='project.code', read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
-    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True)
+    assigned_to_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -44,6 +44,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'created_by_name',
             'assigned_to',
             'assigned_to_name',
+            'assignment_type',
             'started_at',
             'finished_at',
             'created_at',
@@ -57,6 +58,45 @@ class TaskSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+    def get_assigned_to_name(self, obj):
+        if obj.assignment_type == Task.AssignmentType.ALL:
+            return 'Todos os usuários'
+
+        if not obj.assigned_to:
+            return None
+
+        return obj.assigned_to.get_full_name() or obj.assigned_to.username
+
+    def validate(self, attrs):
+        assignment_type = attrs.get(
+            'assignment_type',
+            getattr(
+                self.instance,
+                'assignment_type',
+                Task.AssignmentType.ALL
+            )
+        )
+
+        assigned_to = attrs.get(
+            'assigned_to',
+            getattr(self.instance, 'assigned_to', None)
+        )
+
+        if (
+                assignment_type == Task.AssignmentType.USER
+                and assigned_to is None
+        ):
+            raise serializers.ValidationError({
+                'assigned_to':
+                    'Selecione um usuário para esta task.'
+            })
+
+        if assignment_type == Task.AssignmentType.ALL:
+            attrs['assigned_to'] = None
+
+        return attrs
+
 class TaskFinishSerializer(serializers.ModelSerializer):
     description = serializers.CharField()
     ops_code = serializers.CharField(required=False, allow_blank=True)

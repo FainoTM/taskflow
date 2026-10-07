@@ -27,6 +27,10 @@ class Task(models.Model):
         DATABASE = 'DATABASE', 'Banco de Dados'
         OTHER = 'OTHER', 'Outro'
 
+    class AssignmentType(models.TextChoices):
+        ALL = 'ALL', 'Todos os usuários'
+        USER = 'USER', 'Usuário específico'
+
     title = models.CharField(max_length=180)
     description = models.TextField()
 
@@ -37,6 +41,12 @@ class Task(models.Model):
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name='tasks')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_tasks')
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='assigned_tasks', blank=True, null=True)
+
+    assignment_type = models.CharField(
+        max_length=10,
+        choices=AssignmentType,
+        default=AssignmentType.ALL
+    )
 
     started_at = models.DateTimeField(blank=True, null=True)
     finished_at = models.DateTimeField(blank=True, null=True)

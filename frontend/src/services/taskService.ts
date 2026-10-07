@@ -1,5 +1,6 @@
 import { api } from './api';
 import type {
+  AssignmentType,
   KanbanData,
   Task,
   TaskDetail,
@@ -14,7 +15,7 @@ export interface CreateTaskPayload {
   task_type: TaskType;
   priority: TaskPriority;
   project: number;
-  assigned_to?: number | null;
+  assigned_to: number | null;
 }
 
 export async function getTasks() {
@@ -74,4 +75,17 @@ export async function finishTask(
 ) {
   const response = await api.post(`/tasks/${id}/finish/`, data);
   return response.data;
+}
+
+export interface CreateTaskPayload {
+  title: string;
+  description: string;
+
+  task_type: TaskType;
+  priority: TaskPriority;
+
+  project: number;
+
+  assignment_type: AssignmentType;
+  assigned_to: number | null ;
 }
