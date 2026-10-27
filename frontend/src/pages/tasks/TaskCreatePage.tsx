@@ -93,7 +93,7 @@ export function TaskCreatePage() {
                         onChange={(e) => setProject(e.target.value)}
                     >
                         <option value="">Selecione</option>
-                        {projects.map((item) => (
+                        {projects.filter(project => project.is_active).map(item => (
                             <option key={item.id} value={item.id}>
                                 {item.code} - {item.name}
                             </option>

@@ -7,7 +7,7 @@ import { KanbanPage } from '../pages/kanban/KanbanPage';
 import { TaskCreatePage } from '../pages/tasks/TaskCreatePage';
 import { TaskDetailsPage } from '../pages/tasks/TaskDetailsPage';
 // import { TaskFinishPage } from '../pages/tasks/TaskFinishPage';
-// import { ProjectsPage } from '../pages/projects/ProjectsPage';
+import { ProjectsPage } from '../pages/projects/ProjectsPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('access_token');
@@ -39,7 +39,7 @@ export function AppRoutes() {
           <Route path="tasks/nova" element={<TaskCreatePage />} />
           <Route path="tasks/:id" element={<TaskDetailsPage />} />
           {/*<Route path="tasks/:id/finalizar" element={<TaskFinishPage />} />*/}
-          {/*<Route path="projects" element={<ProjectsPage />} />*/}
+          {<Route path="projects" element={<ProjectsPage />} />}
         </Route>
       </Routes>
     </BrowserRouter>

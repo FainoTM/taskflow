@@ -97,6 +97,14 @@ class TaskSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    def validate_project(self, project):
+        if not project.is_active:
+            raise serializers.ValidationError(
+                'Não é possível vincular uma task a um projeto inativo.'
+            )
+        return project
+
+
 class TaskFinishSerializer(serializers.ModelSerializer):
     description = serializers.CharField()
     ops_code = serializers.CharField(required=False, allow_blank=True)

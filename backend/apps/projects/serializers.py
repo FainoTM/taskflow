@@ -1,5 +1,7 @@
+
 from rest_framework import serializers
 from .models import Project
+
 
 class ProjectSerializer(serializers.ModelSerializer):
     tasks_count = serializers.IntegerField(read_only=True)
@@ -13,5 +15,9 @@ class ProjectSerializer(serializers.ModelSerializer):
             'description',
             'is_active',
             'tasks_count',
-            'created_at'
+            'created_at',
         ]
+        read_only_fields = ['id', 'tasks_count', 'created_at']
+
+    def validate_code(self, value):
+        return value.strip().upper()
