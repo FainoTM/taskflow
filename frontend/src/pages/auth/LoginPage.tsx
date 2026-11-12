@@ -1,9 +1,11 @@
 import {type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../../services/authService';
+import { useQueryClient } from '@tanstack/react-query';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -15,6 +17,7 @@ export function LoginPage() {
 
     try {
       await login(username, password);
+      await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       navigate('/dashboard');
     } catch {
       setError('Usuário ou senha inválidos.');

@@ -269,6 +269,7 @@ export function ProjectsPage() {
 
       {modalOpen && (
         <ProjectModal
+          key={editingProject ? `edit-${editingProject.id}` : 'create'}
           project={editingProject}
           onClose={closeModal}
           onSave={handleSave}

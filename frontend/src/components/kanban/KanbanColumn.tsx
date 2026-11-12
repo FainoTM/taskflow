@@ -6,11 +6,14 @@ interface Props {
   id: string;
   title: string;
   tasks: Task[];
+  canDrag: boolean;
+  canDrop: boolean;
 }
 
-export function KanbanColumn({ id, title, tasks }: Props) {
+export function KanbanColumn({ id, title, tasks, canDrag, canDrop }: Props) {
   const { setNodeRef, isOver } = useDroppable({
     id,
+    disabled: !canDrop,
   });
 
   return (
@@ -30,7 +33,7 @@ export function KanbanColumn({ id, title, tasks }: Props) {
 
       <div className="space-y-3">
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskCard key={task.id} task={task} canDrag={canDrag} />
         ))}
       </div>
     </div>

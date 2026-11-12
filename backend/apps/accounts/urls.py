@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
-from .views import UserViewSet
-
+from .views import UserViewSet, me
+from django.urls import path
 router = DefaultRouter()
 
 router.register(
@@ -9,4 +9,6 @@ router.register(
     basename='users'
 )
 
-urlpatterns = router.urls
+urlpatterns = [
+    path('auth/me/', me, name='auth-me'),
+] + router.urls

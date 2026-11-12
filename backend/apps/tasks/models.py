@@ -103,3 +103,27 @@ class TaskAttachment(models.Model):
 
     def __str__(self):
         return self.original_name
+
+
+class TaskStatusHistory(models.Model):
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='status_history'
+    )
+
+    old_status = models.CharField(max_length=30)
+    new_status = models.CharField(max_length=30)
+
+    action = models.CharField(max_length=40)
+    message = models.TextField(blank=True)
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']

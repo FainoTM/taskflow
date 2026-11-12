@@ -9,6 +9,7 @@ import {
   FolderKanban,
   PanelLeft,
 } from 'lucide-react';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 
 const menu = [
   {
@@ -36,6 +37,7 @@ const menu = [
 export function Sidebar() {
   const [expanded, setExpanded] = useState(false);
   const location = useLocation();
+  const { isAdmin } = useCurrentUser();
 
   return (
     <aside
@@ -77,7 +79,7 @@ export function Sidebar() {
 
       {/* Navegação */}
       <nav className="space-y-2 px-3 py-5">
-        {menu.map((item) => {
+        {menu.filter((item) => item.path !== '/projects' || isAdmin).map((item) => {
           const Icon = item.icon;
 
           const active =

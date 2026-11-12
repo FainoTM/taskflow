@@ -4,7 +4,7 @@ export type TaskStatus =
   | 'DEVELOPMENT'
   | 'VALIDATION'
   | 'FINISHED'
-  | 'CANCELED';
+  | 'CANCELLED';
 
 export type TaskPriority =
   | 'LOW'
@@ -56,6 +56,17 @@ export interface TaskVersion {
   created_at: string;
 }
 
+export interface TaskStatusHistory {
+  id: number;
+  old_status: TaskStatus;
+  new_status: TaskStatus;
+  action: 'PROGRESS' | 'SUBMIT_VALIDATION' | 'APPROVED' | 'REJECTED';
+  message: string;
+  changed_by: number;
+  changed_by_name: string;
+  created_at: string;
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -81,6 +92,7 @@ export interface TaskDetail extends Task {
   comments: TaskComment[];
   attachments: TaskAttachment[];
   versions: TaskVersion[];
+  status_history: TaskStatusHistory[];
 }
 
 export type KanbanData = Record<TaskStatus, Task[]>;

@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { CurrentUser } from '../types/auth';
 
 interface LoginResponse {
   access: string;
@@ -20,4 +21,9 @@ export async function login(username: string, password: string) {
 export function logout() {
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
+}
+
+export async function getCurrentUser(): Promise<CurrentUser> {
+  const response = await api.get<CurrentUser>('/auth/me/');
+  return response.data;
 }

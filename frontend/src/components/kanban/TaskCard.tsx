@@ -1,12 +1,14 @@
 import {CSS} from '@dnd-kit/utilities';
 import {useDraggable} from '@dnd-kit/core';
 import {Link} from 'react-router-dom';
+import {GripVertical} from 'lucide-react';
 
 import type {Task} from '../../types/task';
 
 interface Props {
     task: Task;
     isOverlay?: boolean;
+    canDrag?: boolean;
 }
 
 const priorityLabels = {
@@ -23,7 +25,7 @@ const priorityClasses = {
     URGENT: 'bg-red-50 text-red-700',
 };
 
-export function TaskCard({task, isOverlay = false}: Props) {
+export function TaskCard({task, isOverlay = false, canDrag = false}: Props) {
     const {
         attributes,
         listeners,
@@ -32,6 +34,7 @@ export function TaskCard({task, isOverlay = false}: Props) {
         isDragging,
     } = useDraggable({
         id: `task-${task.id}`,
+        disabled: !canDrag || isOverlay,
     });
 
     const style = {
@@ -42,14 +45,12 @@ export function TaskCard({task, isOverlay = false}: Props) {
         <div
             ref={setNodeRef}
             style={style}
-            className={isDragging ? 'opacity-40' : ''}
-            {...attributes}
-            {...listeners}
+            className={`relative ${isDragging ? 'opacity-40' : ''}`}
         >
             <Link
                 to={`/tasks/${task.id}`}
                 onClick={(event) => {
-                    if (isDragging || isOverlay) {
+                    if (isOverlay) {
                         event.preventDefault();
                     }
                 }}
@@ -93,6 +94,18 @@ export function TaskCard({task, isOverlay = false}: Props) {
                     </p>
                 </div>
             </Link>
+            {canDrag && !isOverlay && (
+                <button
+                    type="button"
+                    aria-label={`Mover task ${task.id}`}
+                    title="Arrastar task"
+                    className="absolute right-3 top-12 cursor-grab rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing"
+                    {...attributes}
+                    {...listeners}
+                >
+                    <GripVertical size={18}/>
+                </button>
+            )}
         </div>
     );
 }

@@ -1,18 +1,35 @@
-from django.utils import timezone
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from django.db.models import Q
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from .models import Task, TaskVersion, TaskAttachment
+from rest_framework.parsers import MultiPartParser, FormParser
+from .models import  TaskAttachment, Task, TaskVersion, TaskStatusHistory
 from .serializers import (
+    TaskVersionSerializer,
+    TaskAttachmentSerializer,
+    TaskAttachmentUploadSerializer,
     TaskSerializer,
     TaskDetailSerializer,
-    TaskVersionSerializer,
     TaskFinishSerializer,
-    TaskAttachmentSerializer,
+    ProgressStatusSerializer,
+    ValidationDecisionSerializer,
+    RejectTaskSerializer,
 )
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
+
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from apps.accounts.roles import Roles, get_user_role
+from apps.accounts.permissions import (
+    IsAppAdmin,
+    IsAppMember,
+    CanDevelop,
+    CanValidate,
+)
+from apps.comments.models import TaskComment
+
 
 
 # Create your views here.
@@ -20,6 +37,159 @@ from .serializers import (
 class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = TaskSerializer
+
+    @action(
+        detail=True,
+        methods=['post'],
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def submit_validation(self, request, pk=None):
+        serializer = TaskFinishSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            visible_task = self.get_object()
+
+            task = Task.objects.select_for_update().get(
+                pk=visible_task.pk
+            )
+
+            if not self.can_work_on_task(task):
+                raise PermissionDenied(
+                    'Você não pode desenvolver esta task.'
+                )
+
+            if task.status != Task.Status.DEVELOPMENT:
+                raise ValidationError({
+                    'status': 'A task precisa estar em desenvolvimento.'
+                })
+
+            data = serializer.validated_data
+
+            TaskVersion.objects.create(
+                task=task,
+                description=data['description'],
+                ops_code=data.get('ops_code', ''),
+                project_code=data.get('project_code', ''),
+                old_code=data.get('old_code', ''),
+                new_code=data.get('new_code', ''),
+                created_by=request.user,
+            )
+
+            old_status = task.status
+            task.status = Task.Status.VALIDATION
+            task.save(update_fields=['status', 'updated_at'])
+
+            TaskStatusHistory.objects.create(
+                task=task,
+                old_status=old_status,
+                new_status=Task.Status.VALIDATION,
+                action='SUBMIT_VALIDATION',
+                changed_by=request.user,
+            )
+
+        return Response({
+            'message': 'Task enviada para validação.',
+            'status': task.status,
+        })
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        serializer = ValidationDecisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            visible_task = self.get_object()
+
+            task = Task.objects.select_for_update().get(
+                pk=visible_task.pk
+            )
+
+            if task.status != Task.Status.VALIDATION:
+                raise ValidationError({
+                    'status': 'A task não está aguardando validação.'
+                })
+
+            message = serializer.validated_data.get('message', '')
+
+            task.status = Task.Status.FINISHED
+            task.finished_at = timezone.now()
+            task.save(update_fields=['status', 'finished_at', 'updated_at'])
+
+            TaskStatusHistory.objects.create(
+                task=task,
+                old_status=Task.Status.VALIDATION,
+                new_status=Task.Status.FINISHED,
+                action='APPROVED',
+                message=message,
+                changed_by=request.user,
+            )
+
+            if message:
+                TaskComment.objects.create(
+                    task=task,
+                    user=request.user,
+                    comment=f'Validação aprovada: {message}',
+                )
+
+        return Response({
+            'message': 'Task aprovada e finalizada.',
+            'status': task.status,
+        })
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        serializer = RejectTaskSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        message = serializer.validated_data['message']
+
+        with transaction.atomic():
+            visible_task = self.get_object()
+
+            task = Task.objects.select_for_update().get(
+                pk=visible_task.pk
+            )
+
+            if task.status != Task.Status.VALIDATION:
+                raise ValidationError({
+                    'status': 'A task não está aguardando validação.'
+                })
+
+            task.status = Task.Status.DEVELOPMENT
+            task.finished_at = None
+            task.save(update_fields=['status', 'finished_at', 'updated_at'])
+
+            TaskStatusHistory.objects.create(
+                task=task,
+                old_status=Task.Status.VALIDATION,
+                new_status=Task.Status.DEVELOPMENT,
+                action='REJECTED',
+                message=message,
+                changed_by=request.user,
+            )
+
+            TaskComment.objects.create(
+                task=task,
+                user=request.user,
+                comment=f'Validação recusada: {message}',
+            )
+
+        return Response({
+            'message': 'Task recusada e devolvida ao desenvolvimento.',
+            'status': task.status,
+        })
+
+    def can_work_on_task(self, task):
+        user = self.request.user
+
+        if get_user_role(user) == Roles.ADMIN:
+            return True
+
+        return (
+                task.assigned_to_id == user.id
+                or task.assignment_type == Task.AssignmentType.ALL
+        )
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -35,20 +205,28 @@ class TaskViewSet(viewsets.ModelViewSet):
         ).prefetch_related(
             'comments',
             'attachments',
-            'versions'
+            'versions',
+            'status_history'
         )
 
         user = self.request.user
+        role = get_user_role(user)
 
-        if not user.is_staff:
-            queryset = queryset.filter(
-                Q(assignment_type=Task.AssignmentType.ALL)
-                |
-                Q(
-                    assignment_type=Task.AssignmentType.USER,
-                    assigned_to=user
-                )
+        if role is None:
+            return queryset.none()
+
+        if role != Roles.ADMIN:
+            visibility = (
+                    Q(assignment_type=Task.AssignmentType.ALL)
+                    | Q(assigned_to=user)
+                    | Q(created_by=user)
             )
+
+            # O suporte também vê as tasks aguardando validação.
+            if role == Roles.SUPPORT:
+                visibility |= Q(status=Task.Status.VALIDATION)
+
+            queryset = queryset.filter(visibility)
 
         status_param = self.request.query_params.get('status')
         project_param = self.request.query_params.get('project')
@@ -59,41 +237,15 @@ class TaskViewSet(viewsets.ModelViewSet):
         if project_param:
             queryset = queryset.filter(project_id=project_param)
 
-        return queryset
+        return queryset.distinct()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
-    @action(detail=True, methods=['post'])
-    def finish(self, request, pk=None):
-        task = self.get_object()
-
-        serializer = TaskFinishSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        TaskVersion.objects.create(
-            task=task,
-            description=serializer.validated_data['description'],
-            ops_code=serializer.validated_data.get('ops_code', ''),
-            project_code=serializer.validated_data.get('project_code', ''),
-            old_version=serializer.validated_data.get('old_version', ''),
-            new_version=serializer.validated_data.get('new_version', ''),
-            created_by=request.user,
-        )
-
-        task.status = Task.Status.FINISHED
-        task.finished_at = timezone.now()
-        task.save(update_fields=['status', 'finished_at', 'updated_at'])
-
-        return Response(
-            {'message': 'Task finalizada com sucesso!'},
-            status=status.HTTP_200_OK,
-        )
-
     @action(detail=True, methods=['get'])
     def versions(self, request, pk=None):
         task = self.get_object()
-        versions = task.versions.select_related('created_at')
+        versions = task.versions.select_related('created_by')
         serializer = TaskVersionSerializer(versions, many=True)
 
         return Response(serializer.data)
@@ -119,40 +271,66 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'])
     def change_status(self, request, pk=None):
-        task = self.get_object()
-        new_status = request.data.get('status')
+        serializer = ProgressStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-        valid_statuses = [choice[0] for choice in Task.Status.choices]
+        new_status = serializer.validated_data['status']
 
-        if new_status not in valid_statuses:
-            return Response(
-                {'detail': 'Status inválido.'},
-                status=status.HTTP_400_BAD_REQUEST
+        allowed_transitions = {
+            Task.Status.OPEN: [Task.Status.ANALYSIS],
+            Task.Status.ANALYSIS: [Task.Status.DEVELOPMENT],
+            Task.Status.DEVELOPMENT: [Task.Status.ANALYSIS],
+        }
+
+        with transaction.atomic():
+            visible_task = self.get_object()
+
+            task = Task.objects.select_for_update().get(
+                pk=visible_task.pk
             )
 
-        task.status = new_status
+            if not self.can_work_on_task(task):
+                raise PermissionDenied(
+                    'Esta task não está atribuída a você.'
+                )
 
-        if new_status == Task.Status.DEVELOPMENT and not task.started_at:
-            task.started_at = timezone.now()
+            if new_status not in allowed_transitions.get(task.status, []):
+                raise ValidationError({
+                    'status': 'Transição de status não permitida.'
+                })
 
-        if new_status == Task.Status.FINISHED:
-            task.finished_at = timezone.now()
+            old_status = task.status
 
-        task.save()
+            task.status = new_status
 
-        serializer = TaskSerializer(task)
-        return Response(serializer.data)
+            if new_status == Task.Status.DEVELOPMENT and not task.started_at:
+                task.started_at = timezone.now()
 
-    @action(detail=True, methods=['post'])
+            update_fields = ['status', 'updated_at']
+            if new_status == Task.Status.DEVELOPMENT and not task.started_at:
+                update_fields.append('started_at')
+            task.save(update_fields=update_fields)
+
+            TaskStatusHistory.objects.create(
+                task=task,
+                old_status=old_status,
+                new_status=new_status,
+                action='PROGRESS',
+                changed_by=request.user,
+            )
+
+        return Response(TaskSerializer(task).data)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        parser_classes=[MultiPartParser, FormParser],
+    )
     def upload_attachment(self, request, pk=None):
         task = self.get_object()
-        uploaded_file = request.FILES.get('file')
-
-        if not uploaded_file:
-            return Response(
-                {'detail': 'Nenhum arquivo enviado.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        upload_serializer = TaskAttachmentUploadSerializer(data=request.data)
+        upload_serializer.is_valid(raise_exception=True)
+        uploaded_file = upload_serializer.validated_data['file']
 
         attachment = TaskAttachment.objects.create(
             task=task,
@@ -167,3 +345,19 @@ class TaskViewSet(viewsets.ModelViewSet):
         )
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def get_permissions(self):
+        if self.action in ['change_status', 'submit_validation']:
+            return [IsAuthenticated(), CanDevelop()]
+
+        if self.action in ['approve', 'reject']:
+            return [IsAuthenticated(), CanValidate()]
+
+        if self.action in [
+            'update',
+            'partial_update',
+            'destroy',
+        ]:
+            return [IsAuthenticated(), IsAppAdmin()]
+
+        return [IsAuthenticated(), IsAppMember()]

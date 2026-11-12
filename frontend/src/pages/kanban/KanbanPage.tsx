@@ -15,6 +15,7 @@ import { getKanbanTasks, changeTaskStatus } from '../../services/taskService';
 import { KanbanColumn } from '../../components/kanban/KanbanColumn';
 import { TaskCard } from '../../components/kanban/TaskCard';
 import type { Task, TaskStatus } from '../../types/task';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 
 const columns: { status: TaskStatus; title: string }[] = [
   { status: 'OPEN', title: 'Aberto' },
@@ -22,12 +23,19 @@ const columns: { status: TaskStatus; title: string }[] = [
   { status: 'DEVELOPMENT', title: 'Em desenvolvimento' },
   { status: 'VALIDATION', title: 'Aguardando validação' },
   { status: 'FINISHED', title: 'Finalizado' },
-  { status: 'CANCELED', title: 'Cancelado' },
+  { status: 'CANCELLED', title: 'Cancelado' },
 ];
+
+const validTransitions: Partial<Record<TaskStatus, TaskStatus[]>> = {
+  OPEN: ['ANALYSIS'],
+  ANALYSIS: ['DEVELOPMENT'],
+  DEVELOPMENT: ['ANALYSIS'],
+};
 
 export function KanbanPage() {
   const queryClient = useQueryClient();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const { canDevelop } = useCurrentUser();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -60,6 +68,7 @@ export function KanbanPage() {
   });
 
   function handleDragStart(event: DragStartEvent) {
+    if (!canDevelop) return;
     const taskId = Number(event.active.id.toString().replace('task-', ''));
     const task = allTasks.find((item) => item.id === taskId);
 
@@ -73,7 +82,7 @@ export function KanbanPage() {
 
     setActiveTask(null);
 
-    if (!over) {
+    if (!canDevelop || !over) {
       return;
     }
 
@@ -86,7 +95,7 @@ export function KanbanPage() {
       return;
     }
 
-    if (task.status === newStatus) {
+    if (!validTransitions[task.status]?.includes(newStatus)) {
       return;
     }
 
@@ -106,7 +115,9 @@ export function KanbanPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Kanban</h1>
           <p className="text-sm text-slate-500">
-            Arraste os cards entre as colunas para alterar o status.
+            {canDevelop
+              ? 'Use a alça do card para avançar somente pelas etapas permitidas.'
+              : 'Você pode acompanhar as tasks; a alteração de progresso é restrita a Programador e Administrador.'}
           </p>
         </div>
 
@@ -130,6 +141,8 @@ export function KanbanPage() {
               id={`column-${column.status}`}
               title={column.title}
               tasks={data?.[column.status] ?? []}
+              canDrag={canDevelop && Boolean(validTransitions[column.status])}
+              canDrop={canDevelop && ['ANALYSIS', 'DEVELOPMENT'].includes(column.status)}
             />
           ))}
         </div>
